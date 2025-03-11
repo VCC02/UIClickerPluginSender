@@ -107,4 +107,11 @@ object frmPluginSenderMain: TfrmPluginSenderMain
     Left = 415
     Top = 230
   end
+  object tmrClose: TTimer
+    Enabled = False
+    Interval = 100
+    OnTimer = tmrCloseTimer
+    Left = 496
+    Top = 230
+  end
 end

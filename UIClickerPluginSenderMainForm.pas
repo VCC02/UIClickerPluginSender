@@ -45,6 +45,7 @@ type
     lbeServerConnection: TLabeledEdit;
     memFilesToSend: TMemo;
     memLog: TMemo;
+    tmrClose: TTimer;
     tmrStartup: TTimer;
     procedure btnLoadClickerClientClick(Sender: TObject);
     procedure btnSendClick(Sender: TObject);
@@ -52,16 +53,19 @@ type
     procedure FormClose(Sender: TObject; var CloseAction: TCloseAction);
     procedure FormCreate(Sender: TObject);
     procedure lbeServerConnectionChange(Sender: TObject);
+    procedure tmrCloseTimer(Sender: TObject);
     procedure tmrStartupTimer(Sender: TObject);
   private
     FLoadClickerClientRes: Boolean;
     FTestServerAddress: string;
     FSkipSavingIni: Boolean;
     FAutoClose: Boolean;
+    FStayOpenOnErrors: Boolean;
 
     procedure AddToLog(s: string);
     procedure LoadSettingsFromIni;
     procedure SaveSettingsToIni;
+    procedure SendFiles;
   public
 
   end;
@@ -159,10 +163,12 @@ begin
   btnLoadClickerClient.Enabled := False;
   btnUnloadClickerClient.Enabled := True;
   btnSend.Enabled := True;
+  Repaint;
+  Application.ProcessMessages;
 end;
 
 
-procedure TfrmPluginSenderMain.btnSendClick(Sender: TObject);
+procedure TfrmPluginSenderMain.SendFiles;
 var
   i: Integer;
   MemStream: TMemoryStream;
@@ -184,11 +190,24 @@ begin
       SetLength(Response, ResLen);
 
       AddToLog('File: "' + ExtractFileName(FileName) + '"  Response: ' + Response);
+
+      if Pos('Client exception', Response) > 0 then
+        raise Exception.Create(Response);
     finally
       MemStream.Free;
     end;
   end;
 end;
+
+
+procedure TfrmPluginSenderMain.btnSendClick(Sender: TObject);
+begin
+  try
+    SendFiles;
+  except
+  end;
+end;
+
 
 
 procedure TfrmPluginSenderMain.btnUnloadClickerClientClick(Sender: TObject);
@@ -204,6 +223,8 @@ begin
     btnLoadClickerClient.Enabled := True;
     btnUnloadClickerClient.Enabled := False;
     btnSend.Enabled := False;
+    Repaint;
+    Application.ProcessMessages;
   end;
 end;
 
@@ -238,14 +259,24 @@ begin
 end;
 
 
+procedure TfrmPluginSenderMain.tmrCloseTimer(Sender: TObject);
+begin
+  tmrClose.Enabled := False;
+  Close;
+end;
+
+
 procedure TfrmPluginSenderMain.tmrStartupTimer(Sender: TObject);
 var
   i: Integer;
+  ExceptionFound, ClearCurrentListOfFiles: Boolean;
 begin
   tmrStartup.Enabled := False;
   LoadSettingsFromIni;
 
   FAutoClose := False;
+  FStayOpenOnErrors := False;
+  ClearCurrentListOfFiles := False;
 
   i := 1;
   repeat
@@ -253,6 +284,7 @@ begin
     begin
       FAutoClose := True;
       lbeServerConnection.Text := ParamStr(i + 1);
+      AddToLog(ParamStr(i) + ' ' + lbeServerConnection.Text);
       Inc(i);
     end;
 
@@ -260,6 +292,7 @@ begin
     begin
       FAutoClose := True;
       lbeClickerClientPath.Text := ParamStr(i + 1);
+      AddToLog(ParamStr(i) + ' ' + lbeClickerClientPath.Text);
       Inc(i);
     end;
 
@@ -269,22 +302,50 @@ begin
       FSkipSavingIni := True;
 
       if (ParamStr(i + 1) = 'Yes') or (ParamStr(i + 1) = 'True') then
+      begin
+        AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
         Inc(i);
+      end
+      else
+        if (ParamStr(i + 1) = 'No') or (ParamStr(i + 1) = 'False') then
+        begin
+          FSkipSavingIni := False;
+          AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
+          Inc(i);
+        end
+        else
+          AddToLog(ParamStr(i));
     end;
 
     if ParamStr(i) = '--ClearCurrentListOfFiles' then
     begin
       FAutoClose := True;
-      memFilesToSend.Clear;
+      ClearCurrentListOfFiles := True;
 
       if (ParamStr(i + 1) = 'Yes') or (ParamStr(i + 1) = 'True') then
+      begin
+        AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
         Inc(i);
+      end
+      else
+        if (ParamStr(i + 1) = 'No') or (ParamStr(i + 1) = 'False') then
+        begin
+          ClearCurrentListOfFiles := False;
+          AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
+          Inc(i);
+        end
+        else
+          AddToLog(ParamStr(i));
+
+      if ClearCurrentListOfFiles then
+        memFilesToSend.Clear;
     end;
 
     if ParamStr(i) = '--AddFileToList' then
     begin
       FAutoClose := True;
       memFilesToSend.Lines.Add(ParamStr(i + 1));
+      AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
     end;
 
     if ParamStr(i) = '--AutoClose' then
@@ -292,35 +353,79 @@ begin
       if (ParamStr(i + 1) = 'No') or (ParamStr(i + 1) = 'False') then
       begin
         FAutoClose := False;
+        AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
         Inc(i);
-      end;
+      end
+      else
+        if (ParamStr(i + 1) = 'Yes') or (ParamStr(i + 1) = 'True') then
+        begin
+          AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
+          Inc(i);
+        end
+        else
+          AddToLog(ParamStr(i));
     end;
+
+    if ParamStr(i) = '--StayOpenOnErrors' then
+    begin
+      FStayOpenOnErrors := True;
+
+      if (ParamStr(i + 1) = 'Yes') or (ParamStr(i + 1) = 'True') then
+      begin
+        AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
+        Inc(i);
+      end
+      else
+        if (ParamStr(i + 1) = 'No') or (ParamStr(i + 1) = 'False') then
+        begin
+          FStayOpenOnErrors := False;
+          AddToLog(ParamStr(i) + ' ' + ParamStr(i + 1));
+          Inc(i);
+        end
+        else
+          AddToLog(ParamStr(i));
+    end;
+
+    Inc(i);
   until i >= ParamCount;
 
   if FAutoClose then
   begin
+    ExceptionFound := False;
     try
       btnLoadClickerClient.Click;
     except
       on E: Exception do
+      begin
         AddToLog('Ex: "' + E.Message + '" on loading ClickerClient.');
+        ExceptionFound := True;
+      end;
     end;
 
     try
-      btnSend.Click;
+      SendFiles;
     except
       on E: Exception do
+      begin
         AddToLog('Ex: "' + E.Message + '" on sending files.');
+        ExceptionFound := True;
+      end;
     end;
 
     try
       btnUnloadClickerClient.Click;
     except
       on E: Exception do
+      begin
         AddToLog('Ex: "' + E.Message + '" on unloading ClickerClient.');
+        ExceptionFound := True;
+      end;
     end;
 
-    Close;
+    if ExceptionFound and FStayOpenOnErrors then
+      Exit;
+
+    tmrClose.Enabled := True;
   end;
 end;
 
